@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Recognition</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 50px;
+        }
+        #recordingIndicator {
+            display: none;
+            color: red;
+            font-size: 20px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Speech Recognition</h1>
+    
+    <button id="startRecording">Start Recording</button>
+    <button id="stopRecording" disabled>Stop Recording</button>
+    
+    <div id="recordingIndicator">🔴 Recording...</div>
+
+    <p id="recognizedText"></p>
+    
+    <video id="videoPlayer" width="400" controls muted autoplay style="display: none;">
+        <source id="videoSource" src="" type="video/mp4">
+        Your browser does not support the video tag.
+    </video>
+
+    <script>
+        const startBtn = document.getElementById("startRecording");
+        const stopBtn = document.getElementById("stopRecording");
+        const recordingIndicator = document.getElementById("recordingIndicator");
+        const recognizedText = document.getElementById("recognizedText");
+        const videoPlayer = document.getElementById("videoPlayer");
+        const videoSource = document.getElementById("videoSource");
+
+        let mediaRecorder;
+        let audioChunks = [];
+
+        startBtn.addEventListener("click", async () => {
+            try {
+                audioChunks = [];
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                recordingIndicator.style.display = "block";
+
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.start();
+            } catch (error) {
+                console.error("Error accessing microphone:", error);
+                alert("Microphone access denied or unavailable.");
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        });
+
+        stopBtn.addEventListener("click", async () => {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            recordingIndicator.style.display = "none";
+
+            mediaRecorder.stop();
+
+            mediaRecorder.onstop = async () => {
+                const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
+                const formData = new FormData();
+                formData.append("audio", audioBlob, "recorded.wav");
+
+                try {
+                    const response = await fetch("http://localhost:5000/recognize", {
+                        method: "POST",
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Failed to process audio");
+                    }
+
+                    const result = await response.json();
+                    console.log(result);
+                    recognizedText.textContent = "Recognized Text: " + result.text;
+
+                    if (result.video) {
+                        videoSource.src = `http://localhost:5000${result.video}`;
+                        videoPlayer.style.display = "block";
+                        videoPlayer.load();
+                        videoPlayer.play();
+                    } else {
+                        videoPlayer.style.display = "none";
+                    }
+                } catch (error) {
+                    console.error("Error recognizing speech:", error);
+                    recognizedText.textContent = "❌ Recognition failed!";
+                }
+            };
+        });
+    </script>
+</body>
+</html>
